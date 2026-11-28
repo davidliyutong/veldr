@@ -1370,6 +1370,65 @@ describe('background tasks, subagents & stopTask (#10)', () => {
     ]);
   }, 30_000);
 
+  test('a foreground task started after its call returned, or after the turn, is never listed, and one that never ended goes with the turn', async () => {
+    const bash = (id: string, command: string) =>
+      outL({
+        type: 'assistant',
+        parent_tool_use_id: null,
+        message: { id: 'msg_' + id, role: 'assistant', content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] },
+      });
+    const returned = (id: string, content: string) =>
+      outL({
+        type: 'user',
+        parent_tool_use_id: null,
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content, is_error: false }] },
+      });
+    const fg = (task: string, tool: string, description: string) =>
+      outL({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: task,
+        tool_use_id: tool,
+        task_type: 'local_bash',
+        description,
+        is_backgrounded: false,
+      });
+    const { r, s } = await started([
+      ...initLines(),
+      userIn('run'),
+      stateOut('running'),
+      // A command that ends seconds in: the program registered it as a task
+      // just before, and its task_started comes after the result.
+      bash('toolu_quick', 'rm probe && check'),
+      returned('toolu_quick', 'ok'),
+      fg('task-quick', 'toolu_quick', 'Remove the probe and run checks'),
+      // A task whose result and bookend both went missing.
+      bash('toolu_lost', 'sleep 1'),
+      fg('task-lost', 'toolu_lost', 'sleep 1'),
+      resultOut(),
+      stateOut('idle'),
+      // A bookend after the turn.
+      fg('task-after', 'toolu_after', 'late'),
+    ]);
+    const seen: Array<string[] | undefined> = [];
+    const update = r.host.update.bind(r.host);
+    r.host.update = (fn) => {
+      update(fn);
+      seen.push(r.host.chat.tasks?.map((t) => t.id));
+    };
+    await r.until(s, 2);
+    await s.prompt({ content: text('run'), message: 'm1', clientId: 'c1', recorded: true }, sig());
+    await r.until(s, -1);
+    expect(seen.some((ids) => ids?.includes('task-quick') || ids?.includes('task-after'))).toBe(false);
+    expect(seen.some((ids) => ids?.includes('task-lost'))).toBe(true);
+    expect(r.host.chat.tasks).toBeUndefined();
+    // The quick call stays completed: no late update says it runs again.
+    const quick = r.eventsOf(EventType.Update).filter((e) => e.item === 'toolu_quick');
+    const statuses = quick.map((e) => (e.update as { status?: string }).status).filter(Boolean);
+    expect(statuses[statuses.length - 1]).toBe('completed');
+    expect(r.eventsOf(EventType.Update).some((e) => e.item === 'toolu_after')).toBe(false);
+  }, 30_000);
+
   test('stopping a task the program no longer runs (its end unheard) clears it from the tasks', async () => {
     const { r, s } = await started([
       ...initLines(),

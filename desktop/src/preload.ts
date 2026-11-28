@@ -6,7 +6,7 @@
 // the app, (from the page) which commands' menu items to disable, how many
 // panes have unsaved changes and its answer when the window closes with
 // some (the shell asks it), the addresses the browser panes' webviews open as popups, and on macOS three requests without arguments
-// for Full Disk Access. verifyUser takes a nonce to the main process, which
+// for Full Disk Access and one for a tick of the trackpad. verifyUser takes a nonce to the main process, which
 // asks the hub what it is for and shows that in the system's prompt; for
 // the vault's unlock key it answers a relay sealed for the hub, which the
 // page only passes on.
@@ -263,6 +263,7 @@ export function desktopShellFor(platform: string, detached = false): DesktopShel
         revealTerminalCore: () => ipcRenderer.send(channels.revealTerminalCore),
         relaunch: () => ipcRenderer.send(channels.relaunch),
       },
+      haptic: () => ipcRenderer.send(channels.haptic),
       titlebar: {
         kind: 'mac',
         inset: MAC_TITLEBAR_INSET,

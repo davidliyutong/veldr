@@ -59,6 +59,7 @@ import {
 import { enclaveFor, helperPath, helperRunner, runBounded } from './enclave';
 import { FolderQueue } from './folders';
 import { followHub, type ShellSettings } from './follow';
+import { hapticPath, hapticsFor, loadHaptic } from './haptics';
 import { menuCommands, menuTemplate, parseDisabled, type Binding } from './menu';
 import { createNotifications } from './notifications';
 import { APP_ORIGIN } from './origin';
@@ -562,6 +563,15 @@ ipcMain.on(channels.revealTerminalCore, (event) => {
 });
 ipcMain.on(channels.relaunch, (event) => {
   if (fromMainPage(event)) privacy.relaunch();
+});
+
+// macOS: a tick of the trackpad for each step of a swipe through the
+// sidebar's tools; the module is loaded at the first.
+const haptics = hapticsFor(() =>
+  platform === 'darwin' ? loadHaptic(hapticPath(app.isPackaged ? process.resourcesPath : undefined, app.getAppPath())) : undefined,
+);
+ipcMain.on(channels.haptic, (event) => {
+  if (fromMainPage(event)) haptics.tick();
 });
 
 // What the app's processes use, for the page's Performance settings: the

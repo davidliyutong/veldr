@@ -122,6 +122,13 @@ export function detachedRecordForTab(
   return undefined;
 }
 
+/** The tabs of workspace ws of machine m that the main window shows, with
+ * their indexes: those not open in detached windows. */
+export function shownTabs(m: string, ws: L.Workspace): { tb: L.Tab; i: number }[] {
+  const records = useDetachedTabs.getState().records;
+  return ws.tabs.map((tb, i) => ({ tb, i })).filter(({ tb }) => !detachedRecordForTab(m, tb, records));
+}
+
 /** Returns the detached window record holding `pane` of machine `m`, if any. */
 export function detachedRecordForPane(
   m: string,

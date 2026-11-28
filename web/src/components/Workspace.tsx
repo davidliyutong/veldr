@@ -17,6 +17,8 @@ import { t, type MessageKey } from '../i18n';
 import { withKey } from '../keymap';
 import { InlineEdit } from './InlineEdit';
 import { startTabDrag } from '../tabDrag';
+import { useSwipe } from '../swipe';
+import { TabSwitcher } from './TabSwitcher';
 import { detachedRecordForPane, detachedRecordForTab, isDetachedWindow, requestDockAll, useDetachedTabs } from '../detachedWindow';
 import { dropEdit } from '../unsaved';
 import { isKeepableChatLeaf, isKeepableFileLeaf, keepChatPanes, keepFilePanes, keepPanes, resetKeptPanes } from '../keptPanes';
@@ -137,6 +139,8 @@ export function Workspace() {
   const ws = layout ? L.selectedWorkspace(layout) : undefined;
   const sel = useMulti((s) => s.sel);
   const detachedRecords = useDetachedTabs((s) => s.records);
+  // The tab a swipe under way picked (swipe.ts), marked until it is shown.
+  const swipeTab = useSwipe((s) => (s.target === 'tab' ? s.ids[s.index] : undefined));
   // Once a tab moves into a detached window, dispose any kept main-window edit
   // left behind by an unmounting editor (e.g. after choosing Don't Save before
   // detaching) so it does not linger in the main window's unsaved list.
@@ -247,7 +251,7 @@ export function Workspace() {
             return (
               <div
                 key={`${i}:${tb.focused}`}
-                className={`tab ${i === activeTabIndex ? 'active' : ''} ${picked.has(key) ? 'multi' : ''} ${tb.pinned ? 'pinned' : ''}`}
+                className={`tab ${i === activeTabIndex ? 'active' : ''} ${picked.has(key) ? 'multi' : ''} ${tb.pinned ? 'pinned' : ''} ${key === swipeTab ? 'swipe-pick' : ''}`}
                 role="tab"
                 aria-selected={i === activeTabIndex || picked.has(key)}
                 tabIndex={-1}
@@ -400,6 +404,7 @@ export function Workspace() {
           )}
         </div>
       </div>
+      <TabSwitcher m={m} ws={ws} />
       <div className="workspace-body">
         {tab ? (
           <TabView m={m} ws={ws.id} tab={tab} />

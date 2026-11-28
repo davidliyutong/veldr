@@ -7,7 +7,7 @@
 // every agyEveryMs (the polls in between get its last answer), not again
 // for agyBackoffMs after it failed, in a process group of its own killed
 // after agyMs and once it exited (run.ts).
-import { readdir, readFile, readlink, stat } from 'node:fs/promises';
+import { lstat, readdir, readFile, readlink, realpath, stat, type FileHandle } from 'node:fs/promises';
 import { posix } from 'node:path';
 import {
   MODEL,
@@ -384,36 +384,71 @@ async function agyUsage(e: UsageEnv, o: LimitsOptions, stamp: string): Promise<A
       }
     }
   }
-  // A run the poll cut short says nothing about agy.
-  if (!e.signal.aborted) e.memo.agy.set(bin, { a: copyAccount(a), at: e.now(), stamp });
+  // A run the poll cut short says nothing about agy. Re-read the auth stamp
+  // after agy finishes so agy's own cli.log write/rotation does not invalidate
+  // its memo on the next poll.
+  if (!e.signal.aborted) {
+    const afterStamp = await antigravityAuthStamp(e);
+    if (!e.signal.aborted) e.memo.agy.set(bin, { a: copyAccount(a), at: e.now(), stamp: afterStamp });
+  }
   return a;
 }
 
-/** agy's log below the home directory, where each run notes the account
- * it signed in as. */
-const AGY_LOG = '.gemini/antigravity-cli/cli.log';
+/** agy's log directory and current log below the home directory, where each
+ * run notes the account it signed in as. */
+const AGY_LOG_DIR = '.gemini/antigravity-cli';
 const AGY_ACCOUNT = /(?:authenticated successfully as|applyAuthResult: email=)\s*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
 
-/** The account agy last signed in as, from the end of its log (256 KiB);
- * "" when it does not say. */
+/** Opens agy's cli.log as a regular file owned by e.uid without blocking.
+ * agy maintains cli.log as a relative symlink into its own log/ directory
+ * (cli.log -> log/cli-YYYYMMDD_HHMMSS.log); a symlink is followed only when
+ * owned by e.uid and its resolved target stays strictly inside AGY_LOG_DIR. */
+async function openAgyLog(e: UsageEnv): Promise<FileHandle | null> {
+  const dir = posix.join(e.home, AGY_LOG_DIR);
+  const p = posix.join(dir, 'cli.log');
+  try {
+    return await openRegular(p, { noFollow: true, uid: e.uid });
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    if (code !== 'ELOOP' && code !== 'EMLINK') return null;
+  }
+  try {
+    const lst = await lstat(p);
+    if (!lst.isSymbolicLink() || (e.uid >= 0 && lst.uid !== e.uid)) return null;
+    const [base, target] = await Promise.all([realpath(dir), realpath(p)]);
+    if (!base || base === '/' || !target.startsWith(`${base}/`)) return null;
+    return await openRegular(target, { noFollow: true, uid: e.uid });
+  } catch {
+    return null;
+  }
+}
+
+/** The account agy last signed in as, from the end of its log (256 KiB),
+ * falling back to the start (64 KiB) for long per-session rotated logs whose
+ * startup OAuth line aged past the tail; "" when it does not say. */
 async function agyEmail(e: UsageEnv): Promise<string> {
   const TAIL = 256 << 10;
+  const HEAD = 64 << 10;
+  const fh = await openAgyLog(e);
+  if (!fh) return '';
   try {
-    const fh = await openRegular(posix.join(e.home, AGY_LOG), { noFollow: true, uid: e.uid });
-    try {
-      const st = await fh.stat();
-      if (!st.isFile() || (e.uid >= 0 && st.uid !== e.uid)) return '';
-      const from = Math.max(st.size - TAIL, 0);
-      const b = Buffer.alloc(Math.min(st.size, TAIL));
-      const { bytesRead } = await fh.read(b, 0, b.length, from);
+    const st = await fh.stat();
+    if (!st.isFile() || (e.uid >= 0 && st.uid !== e.uid)) return '';
+    const scan = async (from: number, len: number): Promise<string> => {
+      const b = Buffer.alloc(len);
+      const { bytesRead } = await fh.read(b, 0, len, from);
       let last = '';
       for (const m of b.subarray(0, bytesRead).toString('utf8').matchAll(AGY_ACCOUNT)) last = m[1]!;
       return last;
-    } finally {
-      await fh.close();
-    }
+    };
+    const from = Math.max(st.size - TAIL, 0);
+    const tailMatch = await scan(from, Math.min(st.size, TAIL));
+    if (tailMatch || from === 0) return tailMatch;
+    return await scan(0, Math.min(st.size, HEAD));
   } catch {
     return '';
+  } finally {
+    await fh.close();
   }
 }
 

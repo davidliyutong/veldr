@@ -4,7 +4,7 @@
 // failure, its account from its log, its process group killed.
 import { afterAll, afterEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { extended } from '#shared/testdata/extended.ts';
-import { mkdirSync, readFileSync, symlinkSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { FakeAPI, TEST_NOW, removeHomes, script, tempHome, testEnv, testNowSec, write } from '../testdata/machine.ts';
 import { hashId, type Account, type UsageEnv } from './env.ts';
@@ -362,8 +362,69 @@ describe('agy', () => {
     expect(h.runs()).toBe(3);
   });
 
-  test('agyEmail refuses symlinked, wrong-uid, and FIFO cli.log files', async () => {
-    // Symlink at cli.log must not be followed (O_NOFOLLOW).
+  test('agyEmail follows in-tree rotated cli.log symlinks, reads head on oversized logs, and keeps memo across agy’s own log rotation', async () => {
+    // Real agy installs maintain cli.log -> log/cli-YYYYMMDD_HHMMSS.log.
+    const h = agyHome(agyOut);
+    const cliDir = join(h.home, '.gemini/antigravity-cli');
+    const rotated = join(cliDir, 'log/cli-20261128_220500.log');
+    write(rotated, 'I1128 22:05:00.502 1 server_oauth.go:226] OAuth: authenticated successfully as Symlink@Example.com\n');
+    symlinkSync('log/cli-20261128_220500.log', join(cliDir, 'cli.log'));
+    const a = await one(h.e);
+    expect(a).toMatchObject({ status: 'ok', email: 'Symlink@Example.com', id: hashId('symlink@example.com') });
+    expect(await one(h.e, { skip: [`antigravity:${hashId('symlink@example.com')}`] })).toMatchObject({
+      status: 'skipped',
+      id: a.id,
+    });
+
+    // Long per-session rotated log (>256 KiB) with OAuth line only at startup still resolves email.
+    const hBig = agyHome(agyOut);
+    const bigDir = join(hBig.home, '.gemini/antigravity-cli');
+    const bigLog = join(bigDir, 'log/cli-20261128_220501.log');
+    write(
+      bigLog,
+      'I1128 22:05:00.502 1 server_oauth.go:221] applyAuthResult: email=longsession@example.com, authMethod=consumer\n' +
+        'x'.repeat(300 * 1024),
+    );
+    symlinkSync('log/cli-20261128_220501.log', join(bigDir, 'cli.log'));
+    expect((await one(hBig.e)).email).toBe('longsession@example.com');
+
+    // When agy itself rotates cli.log during a run, the post-run stamp is memoized so
+    // the next poll within agyEveryMs reuses the cached answer instead of re-running agy.
+    const home = tempHome();
+    const runs = join(home, 'runs');
+    const agyDir = join(home, '.gemini/antigravity-cli');
+    mkdirSync(join(agyDir, 'log'), { recursive: true });
+    script(
+      join(home, 'agybin/agy'),
+      `echo run >> ${runs}
+n=0
+while IFS= read -r _; do n=$((n + 1)); done < ${runs}
+f="log/cli-run-$n.log"
+printf 'I1128 22:05:00.502 1 server_oauth.go:226] OAuth: authenticated successfully as rotate@example.com\\nrun %s\\n' "$n" > "${agyDir}/$f"
+ln -sfn "$f" "${agyDir}/cli.log"
+echo '${agyOut}'`,
+    );
+    let now = TEST_NOW;
+    const e = testEnv(home, { env: { PATH: `${join(home, 'agybin')}:/usr/bin:/bin` }, now: () => now });
+    expect((await one(e)).email).toBe('rotate@example.com');
+    expect(count(runs)).toBe(1);
+    now += 60_000;
+    expect((await one(e)).email).toBe('rotate@example.com');
+    expect(count(runs)).toBe(1);
+    // An external account switch after the run still busts the memo immediately.
+    write(
+      join(agyDir, 'log/cli-switched.log'),
+      'I1128 22:06:00.000 1 server_oauth.go:226] OAuth: authenticated successfully as switched@example.com\n',
+    );
+    symlinkSync('log/cli-switched.log', join(agyDir, 'cli.log.tmp'));
+    renameSync(join(agyDir, 'cli.log.tmp'), join(agyDir, 'cli.log'));
+    now += 10_000;
+    expect((await one(e)).email).toBe('rotate@example.com');
+    expect(count(runs)).toBe(2);
+  });
+
+  test('agyEmail refuses escaping symlinks, wrong-uid, and FIFO cli.log files', async () => {
+    // Symlink escaping .gemini/antigravity-cli must not be followed.
     const hLink = agyHome(agyOut);
     const outside = join(hLink.home, 'outside.log');
     write(outside, 'OAuth: authenticated successfully as leaked@example.com\n');
@@ -371,17 +432,47 @@ describe('agy', () => {
     symlinkSync(outside, join(hLink.home, '.gemini/antigravity-cli/cli.log'));
     expect((await one(hLink.e)).email).toBeUndefined();
 
-    // Wrong-uid cli.log must be ignored.
+    // Sibling prefix-collision directory escape (../antigravity-cli-evil/x.log) must be refused.
+    const hPrefix = agyHome(agyOut);
+    const evilSibling = join(hPrefix.home, '.gemini/antigravity-cli-evil/x.log');
+    write(evilSibling, 'OAuth: authenticated successfully as sibling@example.com\n');
+    mkdirSync(join(hPrefix.home, '.gemini/antigravity-cli'), { recursive: true });
+    symlinkSync('../antigravity-cli-evil/x.log', join(hPrefix.home, '.gemini/antigravity-cli/cli.log'));
+    expect((await one(hPrefix.e)).email).toBeUndefined();
+
+    // Intermediate symlinked log/ directory escaping .gemini/antigravity-cli must be refused.
+    const hEscapeDir = agyHome(agyOut);
+    const externalDir = join(hEscapeDir.home, 'external-logs');
+    write(join(externalDir, 'cli-1.log'), 'OAuth: authenticated successfully as dirleak@example.com\n');
+    mkdirSync(join(hEscapeDir.home, '.gemini/antigravity-cli'), { recursive: true });
+    symlinkSync(externalDir, join(hEscapeDir.home, '.gemini/antigravity-cli/log'));
+    symlinkSync('log/cli-1.log', join(hEscapeDir.home, '.gemini/antigravity-cli/cli.log'));
+    expect((await one(hEscapeDir.e)).email).toBeUndefined();
+
+    // Wrong-uid cli.log (regular and symlinked) must be ignored.
     const hUid = agyHome(agyOut);
     write(join(hUid.home, '.gemini/antigravity-cli/cli.log'), 'OAuth: authenticated successfully as other@example.com\n');
     const otherUidEnv = { ...hUid.e, uid: (process.getuid?.() ?? 0) + 999 };
     expect((await one(otherUidEnv)).email).toBeUndefined();
 
-    // FIFO at cli.log must not block (O_NONBLOCK + isFile check).
+    const hLinkUid = agyHome(agyOut);
+    write(join(hLinkUid.home, '.gemini/antigravity-cli/log/cli-1.log'), 'OAuth: authenticated successfully as other-link@example.com\n');
+    symlinkSync('log/cli-1.log', join(hLinkUid.home, '.gemini/antigravity-cli/cli.log'));
+    expect((await one({ ...hLinkUid.e, uid: (process.getuid?.() ?? 0) + 999 })).email).toBeUndefined();
+
+    // FIFO at cli.log (directly or via in-tree symlink) must not block (O_NONBLOCK + isFile check).
     const hFifo = agyHome(agyOut);
-    mkdirSync(join(hFifo.home, '.gemini/antigravity-cli'), { recursive: true });
+    mkdirSync(join(hFifo.home, '.gemini/antigravity-cli/log'), { recursive: true });
     if (Bun.spawnSync(['mkfifo', join(hFifo.home, '.gemini/antigravity-cli/cli.log')]).exitCode === 0) {
       const a = await one(hFifo.e);
+      expect(a.status).toBe('ok');
+      expect(a.email).toBeUndefined();
+    }
+    const hLinkFifo = agyHome(agyOut);
+    mkdirSync(join(hLinkFifo.home, '.gemini/antigravity-cli/log'), { recursive: true });
+    if (Bun.spawnSync(['mkfifo', join(hLinkFifo.home, '.gemini/antigravity-cli/log/pipe.log')]).exitCode === 0) {
+      symlinkSync('log/pipe.log', join(hLinkFifo.home, '.gemini/antigravity-cli/cli.log'));
+      const a = await one(hLinkFifo.e);
       expect(a.status).toBe('ok');
       expect(a.email).toBeUndefined();
     }

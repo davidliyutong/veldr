@@ -32,9 +32,12 @@ const ALL_MACHINE_KEYS = ['linux-amd64', 'linux-arm64', 'linux-amd64-musl', 'lin
 
 // macOS: the Secure Enclave helper, a universal app bundle helper/build.mjs
 // made in dist/helper, placed in the app's Contents/Helpers (src/enclave.ts
-// helperPath), where signing the app signs it with the hardened runtime.
+// helperPath), where signing the app signs it with the hardened runtime;
+// and the haptic feedback module beside it, placed in Contents/Resources
+// (src/haptics.ts hapticPath), signed with the app likewise.
 const helper = `${name} Enclave.app`;
 const helperOf = `dist/helper/${helper}`;
+const hapticOf = 'dist/helper/haptic.node';
 const withHelper = process.platform === 'darwin';
 const developerId = !!(process.env.CSC_LINK || process.env.CSC_NAME);
 
@@ -99,7 +102,7 @@ module.exports = {
       `${STAGE}/licenses/licenses.md`,
       ...ALL_MACHINE_KEYS.map((k) => `${STAGE}/machines/${slug}-${k}.tar.gz`),
     ];
-    if (context.electronPlatformName === 'darwin' && withHelper) needed.push(`${helperOf}/Contents/MacOS/${name} Enclave`);
+    if (context.electronPlatformName === 'darwin' && withHelper) needed.push(`${helperOf}/Contents/MacOS/${name} Enclave`, hapticOf);
     for (const file of needed) {
       const full = join(__dirname, file);
       if (!existsSync(full)) throw new Error(`Missing ${file}; build it with scripts/desktop.sh`);
@@ -120,7 +123,12 @@ module.exports = {
     hardenedRuntime: true,
     extraFiles: [
       { from: `${STAGE}/bin/${slug}`, to: `Helpers/${slug}` },
-      ...(withHelper ? [{ from: helperOf, to: `Helpers/${helper}` }] : []),
+      ...(withHelper
+        ? [
+            { from: helperOf, to: `Helpers/${helper}` },
+            { from: hapticOf, to: 'Resources/haptic.node' },
+          ]
+        : []),
     ],
     extendInfo: {
       CFBundleDocumentTypes: [

@@ -211,6 +211,55 @@ describe('keybindings', () => {
     }
   });
 
+  it('Cmd+1…9 and Alt+1…9 switch tabs from Monaco editors and pane inputs, leaving browsers and dialogs alone', () => {
+    const spies = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => vi.spyOn(commands[`tab.select${n}`], 'run').mockImplementation(() => {}));
+    try {
+      // macOS desktop: Cmd+1..9 run tab.select1..9 and cancel the event before Monaco sees it.
+      useKeys.setState({ effective: registry.keybindings.mac as Binding[] });
+      for (let i = 0; i < 9; i++) {
+        const n = i + 1;
+        const ev = new KeyboardEvent('keydown', { key: String(n), code: `Digit${n}`, metaKey: true, cancelable: true });
+        expect(handleEditorKey(ev), `mac cmd+${n}`).toBe(true);
+        expect(ev.defaultPrevented, `mac cmd+${n}`).toBe(true);
+        expect(spies[i]).toHaveBeenCalledTimes(1);
+      }
+
+      // Windows / Linux desktop: Alt+1..9 run tab.select1..9.
+      for (const p of ['windows', 'linux'] as Platform[]) {
+        useKeys.setState({ effective: (registry.keybindings as Record<Platform, Binding[]>)[p] });
+        const ev = new KeyboardEvent('keydown', { key: '2', code: 'Digit2', altKey: true, cancelable: true });
+        expect(handleEditorKey(ev), `${p} alt+2`).toBe(true);
+        expect(ev.defaultPrevented, `${p} alt+2`).toBe(true);
+      }
+      expect(spies[1]).toHaveBeenCalledTimes(3);
+
+      // Browsers keep Cmd+1..9 and Alt+1..9 for browser tabs.
+      for (const p of ['mac-browser', 'windows-browser', 'linux-browser'] as Platform[]) {
+        useKeys.setState({ effective: (registry.keybindings as Record<Platform, Binding[]>)[p] });
+        const ev = new KeyboardEvent('keydown', {
+          key: '1',
+          code: 'Digit1',
+          metaKey: p === 'mac-browser',
+          altKey: p !== 'mac-browser',
+          cancelable: true,
+        });
+        expect(handleEditorKey(ev), `${p}`).toBe(false);
+        expect(ev.defaultPrevented, `${p}`).toBe(false);
+      }
+
+      // Dialogs keep focus undisturbed.
+      useKeys.setState({ effective: registry.keybindings.mac as Binding[] });
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop';
+      document.body.append(backdrop);
+      const inDialog = new KeyboardEvent('keydown', { key: '1', code: 'Digit1', metaKey: true, cancelable: true });
+      expect(handleEditorKey(inDialog)).toBe(false);
+      backdrop.remove();
+    } finally {
+      for (const s of spies) s.mockRestore();
+    }
+  });
+
   it('switches focus from an active pane or Monaco editor to its pane header on Ctrl+B and returns cleanly', () => {
     useKeys.setState({ effective: registry.keybindings.mac as Binding[] });
     const pane = document.createElement('div');

@@ -31,18 +31,53 @@ async function bundleVersion() {
 }
 
 /**
- * Whether swiftc can be run here. xcode-select -p first: without the Xcode
- * command line tools /usr/bin/swiftc is a stub that offers to install them,
- * which a build must not set off.
+ * Whether tool (swiftc, clang) can be run here. xcode-select -p first:
+ * without the Xcode command line tools /usr/bin/swiftc is a stub that offers
+ * to install them, which a build must not set off.
  */
-export async function swiftcFound() {
+async function toolFound(tool) {
   try {
     await run('xcode-select', ['-p']);
-    await run('xcrun', ['--find', 'swiftc']);
+    await run('xcrun', ['--find', tool]);
     return true;
   } catch {
     return false;
   }
+}
+
+export const swiftcFound = () => toolFound('swiftc');
+export const clangFound = () => toolFound('clang');
+
+/**
+ * Builds the haptic feedback module (haptic.m, src/haptics.ts) into outDir
+ * as haptic.node, one universal file for both Mac architectures, signed ad
+ * hoc for the development run (electron-builder signs the packaged app's
+ * again); its path. Node-API's functions are found in the process that
+ * loads it.
+ */
+export async function buildHaptic(outDir) {
+  await mkdir(outDir, { recursive: true });
+  const out = join(outDir, 'haptic.node');
+  const arches = ARCHES.flatMap((arch) => ['-arch', arch]);
+  await run('xcrun', [
+    'clang',
+    '-bundle',
+    '-undefined',
+    'dynamic_lookup',
+    ...arches,
+    '-mmacosx-version-min=12.0',
+    '-fobjc-arc',
+    '-O2',
+    '-Wall',
+    '-Werror',
+    '-framework',
+    'AppKit',
+    '-o',
+    out,
+    join(here, 'haptic.m'),
+  ]);
+  await run('codesign', ['--force', '--sign', '-', out]);
+  return out;
 }
 
 /** Builds the helper's bundle into outDir; its path. */

@@ -24,7 +24,8 @@ const common = [
 
 test('the page gets its channels and the desktopShell bridge, with these functions', () => {
   assert.deepEqual(Object.keys(exposed), ['desktopChannels', 'desktopShell']);
-  assert.deepEqual(Object.keys(shell).sort(), process.platform === 'darwin' ? [...common, 'privacy', 'titlebar'].sort() : common);
+  assert.deepEqual(Object.keys(shell).sort(), process.platform === 'darwin' ? [...common, 'haptic', 'privacy', 'titlebar'].sort() : common);
+  assert.deepEqual(Object.keys(desktopShellFor('darwin')).sort(), [...common, 'haptic', 'privacy', 'titlebar'].sort());
   for (const platform of ['win32', 'linux']) assert.deepEqual(Object.keys(desktopShellFor(platform)).sort(), common);
 });
 
@@ -61,6 +62,14 @@ test("Full Disk Access is macOS's: three requests on their own channels, carryin
     { channel: channels.revealTerminalCore, value: undefined },
     { channel: channels.relaunch, value: undefined },
   ]);
+  sent.length = 0;
+});
+
+test("the haptic tick is macOS's: a request on its own channel, carrying nothing from the page", () => {
+  const haptic = desktopShellFor('darwin').haptic as unknown as (arg: unknown) => void;
+  sent.length = 0;
+  haptic({ pattern: 'buzz', times: 1000 });
+  assert.deepEqual(sent, [{ channel: channels.haptic, value: undefined }]);
   sent.length = 0;
 });
 

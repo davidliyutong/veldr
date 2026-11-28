@@ -13,25 +13,14 @@ import { openPaneMenu } from './menus';
 import { canGo } from './paneHistory';
 import type { CommandDef } from './plugins/api';
 import { activePanels } from './plugins/registry';
+import { railPool, sidebarPanel } from './railPool';
 import { paneHandle } from './state/panes';
-import { orderRailItems, useStore } from './state/store';
+import { useStore } from './state/store';
 import * as L from './term/layout';
 import { findStep, openFind, useFind } from './vt/find';
 import { currentZoom, zoom, zoomAvailable, ZOOM_LEVELS } from './zoom';
 
 const store = () => useStore.getState();
-
-/** The right sidebar's tools in the rail's order: those the rail shows, or
- * every one when the user hid them all. */
-function railPool() {
-  const s = store();
-  const ordered = orderRailItems(activePanels(), s.railOrder);
-  const visible = ordered.filter((p) => !s.hiddenRailPanels.includes(p.id));
-  return visible.length > 0 ? visible : ordered;
-}
-
-/** The tool the sidebar shows when opened: the one shown last, else the first. */
-const sidebarPanel = (pool: ReturnType<typeof railPool>) => (pool.find((p) => p.id === store().lastPanel) ?? pool[0])?.id;
 
 /** Shows the sidebar's next (1) or previous (-1) tool in the rail's order,
  * from the last after the first and back; a hidden sidebar opens on the

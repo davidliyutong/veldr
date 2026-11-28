@@ -89,6 +89,10 @@ export interface DesktopShell {
   notifications?: DesktopNotifications;
   /** Standalone secondary tab windows (tear-off multi-window support). */
   windows?: DesktopWindows;
+  /** macOS only: one tick of the trackpad's haptic feedback, for each step
+   * of a swipe through the sidebar's tools or the tabs (swipe.ts); nothing is
+   * passed, and nothing is felt without a finger on a Force Touch trackpad. */
+  haptic?(): void;
 }
 
 /** Options accepted by the native desktop notification bridge. */

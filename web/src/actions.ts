@@ -14,6 +14,7 @@ import {
   focusDetachedRecord,
   getDetachedCurrent,
   isDetachedWindow,
+  shownTabs,
   useDetachedTabs,
 } from './detachedWindow';
 import { isLive, type TerminalRecord } from './term/protocol';
@@ -175,8 +176,7 @@ export function current() {
   if (!m || !layout) return undefined;
   const ws = L.selectedWorkspace(layout);
   if (!ws) return { m, layout, ws: undefined, tabIndex: 0, tab: undefined, focused: undefined };
-  const records = useDetachedTabs.getState().records;
-  const visible = ws.tabs.map((tb, i) => ({ tb, i })).filter(({ tb }) => !detachedRecordForTab(m, tb, records));
+  const visible = shownTabs(m, ws);
   const entry = visible.find((x) => x.i === ws.selected) ?? visible[0];
   return { m, layout, ws, tabIndex: entry?.i ?? 0, tab: entry?.tb, focused: entry?.tb.focused || undefined };
 }
@@ -1059,8 +1059,7 @@ export const actions = {
   switchTab(step: number | { index: number } | { last: true }) {
     const c = current();
     if (!c?.ws) return;
-    const records = useDetachedTabs.getState().records;
-    const visible = c.ws.tabs.map((tb, i) => ({ tb, i })).filter(({ tb }) => !detachedRecordForTab(c.m, tb, records));
+    const visible = shownTabs(c.m, c.ws);
     const n = visible.length;
     if (!n) return;
     let target: number | undefined;

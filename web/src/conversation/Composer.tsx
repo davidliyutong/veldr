@@ -322,11 +322,22 @@ export function clearDrafts() {
   }
 }
 
-/** A field's height to fit its text (up to its CSS max-height). */
+/** A field's height to fit its text (up to its CSS max-height). scrollHeight
+ * is in whole pixels and is measured with the scrollbar the one-row field
+ * shows, so the height it gives can leave the last pixels of the text out of
+ * view, behind a scrollbar of its own (a zoomed page, scrollbars that take
+ * room): what the field still scrolls by is added, below its max-height. */
 function grow(el: HTMLTextAreaElement | null) {
   if (!el) return;
   el.style.height = 'auto';
-  if (el.scrollHeight > 0) el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+  if (el.scrollHeight <= 0) return;
+  const height = el.scrollHeight + el.offsetHeight - el.clientHeight;
+  el.style.height = `${height}px`;
+  const top = el.scrollTop;
+  el.scrollTop = el.scrollHeight;
+  const rest = el.scrollTop;
+  el.scrollTop = top;
+  if (rest > 0 && height + rest <= parseFloat(getComputedStyle(el).maxHeight)) el.style.height = `${Math.ceil(height + rest)}px`;
 }
 
 /** A new id of a message, the page's (Command.clientId). */
@@ -590,6 +601,21 @@ export function Composer({
     if (readOnly && preview) setPreview(false);
     if (readOnly && filePickerOpen) setFilePickerOpen(false);
   }, [readOnly, preview, filePickerOpen]);
+
+  // The field fits its text again when its width changes without the text
+  // (the buttons beside it, a scrollbar, the pane), which wraps it anew.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let width = el.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth === width) return;
+      width = el.clientWidth;
+      grow(el);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [inputRef]);
 
   useLayoutEffect(() => {
     const el = inputRef.current;

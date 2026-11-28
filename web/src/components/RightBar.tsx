@@ -15,6 +15,7 @@ import type { PanelDef } from '../plugins/api';
 import { openMenu, type MenuEntry } from '../contextMenu';
 import { PluginBoundary } from './PluginBoundary';
 import { openPanelInPane, startPanelDrag } from '../panelPanes';
+import { useSwipe } from '../swipe';
 
 /** A press that may become a drag of a panel along the rail or onto the panes. */
 function dragPanel(ev: React.PointerEvent, panel: PanelDef, fromRail = false) {
@@ -34,6 +35,8 @@ export function RightBar() {
   const id = useStore((s) => s.panel);
   const railOrder = useStore((s) => s.railOrder);
   const hiddenList = useStore((s) => s.hiddenRailPanels);
+  // The tool a swipe under way picked (swipe.ts).
+  const picked = useSwipe((s) => (s.target === 'panel' && s.open ? s.ids[s.index] : undefined));
   const ordered = orderRailItems(panels, railOrder);
   const hidden = new Set(hiddenList);
   const visible = ordered.filter((p) => !hidden.has(p.id));
@@ -123,7 +126,7 @@ export function RightBar() {
           return (
             <button
               key={p.id}
-              className={`rail-button ${p.id === id ? 'active' : ''}`}
+              className={`rail-button ${p.id === id ? 'active' : ''} ${p.id === picked ? 'swipe-pick' : ''}`}
               title={key ? `${label} (${key})` : label}
               aria-label={label}
               aria-pressed={p.id === id}

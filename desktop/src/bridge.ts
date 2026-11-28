@@ -19,6 +19,9 @@ export const channels = {
   revealTerminalCore: 'desktop:reveal-terminal-core',
   /** page → shell (macOS): quit and open the app again. */
   relaunch: 'desktop:relaunch',
+  /** page → shell (macOS): one tick of the trackpad's haptic feedback, a
+   * step of a swipe through the sidebar's tools or the tabs (haptics.ts). */
+  haptic: 'desktop:haptic',
   /** page → shell: how many panes have unsaved changes (an integer). */
   unsaved: 'desktop:unsaved',
   /** shell → page: the main window is closing while panes have unsaved

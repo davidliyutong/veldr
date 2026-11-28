@@ -49,10 +49,11 @@ Non-goals: arbitrary docking of panes; floating panes.
 - A tab dragged out of the window opens a window with only its panes (`web/src/detachedWindow.ts`); it stays in the layout document, hidden from the main window's tab bar, and docks back with **Move Back to Main Window**.
 - Everything named is renamed in place (a double click, its menu or a binding); a single click only focuses. Pane names are the terminal's `name` label, tab and workspace names are in the layout document.
 - Tabs, workspaces or machines are selected together with ⌘/Ctrl-click and Shift-click (`web/src/state/multiSelect.ts`). Read-only mode and zoomed panes offer no drag, rename or mutating buttons.
+- With Cmd held (Alt on Windows and Linux), two fingers moved left or right on a trackpad pick a tab of the workspace shown, in the bar's order, as a swipe up and down picks a sidebar tool, with the same steps, ends and release ([27](27-plugins.md), `web/src/swipe.ts`). The bar marks the tab picked, with a note under it (`web/src/components/TabSwitcher.tsx`); the tab is selected once, when the key is released, so the tabs gone through are neither shown nor visited by **Go Back**, and Escape leaves the tab shown as it was. A workspace of one tab takes no swipe.
 
 ### Pane history
 
-**Go Back** and **Go Forward** (`pane.back`, `pane.forward`, `web/src/paneHistory.ts`) move through the panes focused, as a browser through pages, in the page only; their keys work in Monaco editors and pane inputs too (`handleEditorKey` in `keymap.ts`).
+**Go Back** and **Go Forward** (`pane.back`, `pane.forward`, `web/src/paneHistory.ts`) move through the panes focused, as a browser through pages, in the page only; their keys, along with `tab.select1`–`tab.select9` (`Cmd+1`–`9` on macOS, `Alt+1`–`9` on Windows and Linux), work in Monaco editors and pane inputs too (`handleEditorKey` in `keymap.ts`).
 
 ### Headers, menus, palette
 
@@ -79,15 +80,15 @@ The model, files and API are in [13](13-settings-and-appearance.md); key syntax,
 
 ## Alternatives considered
 
-| Option | Why not |
-| --- | --- |
-| Each client keeping its own arrangement or selection | Clients would show the same terminals differently. |
-| A desktop shell as the only client | Browser access works from other devices; Tauri's WKWebView lacks the service workers VS Code webviews need. |
-| The shell matching shortcuts before the page (`before-input-event`) | Two matchers with diverging rules; one matcher in the page runs each key once. |
-| `cmd+w` closing the tab | Split-capable terminals close the focused split. |
-| `cmd+[` / `cmd+]` for previous / next pane | Safari, Finder and Xcode use them for back / forward. |
-| Asking before closing a pane with a running program | A dialog interrupts; a timed Undo with the program untouched is safer and faster. |
-| The page taking `cmd+w` from VS Code | Would close the whole pane where users mean to close an editor. |
+| Option                                                              | Why not                                                                                                     |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Each client keeping its own arrangement or selection                | Clients would show the same terminals differently.                                                          |
+| A desktop shell as the only client                                  | Browser access works from other devices; Tauri's WKWebView lacks the service workers VS Code webviews need. |
+| The shell matching shortcuts before the page (`before-input-event`) | Two matchers with diverging rules; one matcher in the page runs each key once.                              |
+| `cmd+w` closing the tab                                             | Split-capable terminals close the focused split.                                                            |
+| `cmd+[` / `cmd+]` for previous / next pane                          | Safari, Finder and Xcode use them for back / forward.                                                       |
+| Asking before closing a pane with a running program                 | A dialog interrupts; a timed Undo with the program untouched is safer and faster.                           |
+| The page taking `cmd+w` from VS Code                                | Would close the whole pane where users mean to close an editor.                                             |
 
 ## Failure modes
 

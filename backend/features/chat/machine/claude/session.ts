@@ -380,6 +380,9 @@ export class ClaudeSession implements Session {
   private tasks = new Map<string, string>();
   private liveTasks = new Map<string, TrackedTask>();
   private taskRuns = new Map<string, string>();
+  /** The tool calls whose result came, for the task_started that comes after
+   * it (lateForeground). */
+  private returnedTools = new Set<string>();
   private lastTasksJson = '';
   private toolParent = new Map<string, string>();
   /** The program's requests that wait for the user. */
@@ -805,6 +808,7 @@ export class ClaudeSession implements Session {
     this.tasks.clear();
     this.taskRuns.clear();
     this.liveTasks.clear();
+    this.returnedTools.clear();
     this.tasksChanged();
   }
 
@@ -881,6 +885,7 @@ export class ClaudeSession implements Session {
     this.inTurn = false;
     this.turnSeen = false;
     this.stream = noStream();
+    this.endForeground();
     this.emit(ev);
     for (const w of this.turnEndWaiters.splice(0)) w();
     this.titleSoon();
@@ -1116,6 +1121,8 @@ export class ClaudeSession implements Session {
    * background_tasks_changed (the level of background tasks) lists it again.
    * The task-to-call map stays for the frames still to come. */
   private toolReturned(tool: string): void {
+    if (this.returnedTools.size >= MAX_TRACKED) this.returnedTools = new Set();
+    this.returnedTools.add(tool);
     let ended = false;
     for (const [id, t] of this.liveTasks) {
       if (t.toolCallId !== tool || t.backgrounded) continue;
@@ -1123,6 +1130,31 @@ export class ClaudeSession implements Session {
       ended = true;
     }
     if (ended) this.tasksChanged();
+  }
+
+  /** The turn ended: a foreground task blocks its tool call, and so the
+   * turn, so none it ran is still running, whatever bookends came or did
+   * not. A task in the background stays. */
+  private endForeground(): void {
+    let ended = false;
+    for (const [id, t] of this.liveTasks) {
+      if (t.backgrounded || t.ambient) continue;
+      this.liveTasks.delete(id);
+      ended = true;
+    }
+    if (ended) this.tasksChanged();
+  }
+
+  /** Whether a task_started of a task in the foreground came after the task
+   * had ended: its tool call already returned, or no turn runs. The program
+   * registers a command as a task only once it has run a while (so that it
+   * can be moved to the background) and sends task events from a queue of
+   * their own, so a command that ends soon after can return first; taken
+   * then, the task would be listed as running, and its call shown running
+   * again, with nothing to end either. */
+  private lateForeground(tool: string, backgrounded: boolean): boolean {
+    if (backgrounded) return false;
+    return !this.inTurn || (tool !== '' && this.returnedTools.has(tool));
   }
 
   private notice(name: string, params?: unknown, entryUuid = ''): void {
@@ -1198,6 +1230,7 @@ export class ClaudeSession implements Session {
             if (this.tasks.size >= MAX_TRACKED) this.tasks = new Map();
             this.tasks.set(task, tool);
           }
+          if (this.lateForeground(tool, bg || (prev?.backgrounded ?? false))) return;
           if (this.liveTasks.size >= MAX_TRACKED && !prev) this.liveTasks = new Map();
           const entry: TrackedTask = {
             id: task,

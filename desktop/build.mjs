@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { buildHelper, swiftcFound } from './helper/build.mjs';
+import { buildHaptic, buildHelper, clangFound, swiftcFound } from './helper/build.mjs';
 
 await build({
   entryPoints: ['src/main.ts'],
@@ -31,11 +31,15 @@ for (const [entry, out] of [
   });
 }
 
-// macOS: the Secure Enclave helper (helper/build.mjs), which the packaged app
-// carries in Contents/Helpers and the development run finds here. Without
-// swiftc the rest still builds, and the app runs without Touch ID unlocks;
-// electron-builder's beforePack refuses to package a Mac app without it.
+// macOS: the Secure Enclave helper and the haptic feedback module
+// (helper/build.mjs), which the packaged app carries in Contents/Helpers and
+// Contents/Resources and the development run finds here. Without swiftc or
+// clang the rest still builds, and the app runs without Touch ID unlocks or
+// without ticks of the trackpad; electron-builder's beforePack refuses to
+// package a Mac app without them.
 if (process.platform === 'darwin') {
   if (await swiftcFound()) await buildHelper('dist/helper');
   else console.warn('warning: swiftc not found (Xcode command line tools): the Secure Enclave helper is not built');
+  if (await clangFound()) await buildHaptic('dist/helper');
+  else console.warn('warning: clang not found (Xcode command line tools): the haptic feedback module is not built');
 }

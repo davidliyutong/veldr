@@ -27,8 +27,6 @@ import { lazyPlugin } from '../plugins/lazy';
 import { RightBar } from '../components/RightBar';
 import { PluginPane } from '../components/PluginPane';
 import { commandEnabled, runCommand } from '../keymap';
-import { isMac } from '../keys';
-import { onPanelWheel, resetPanelSwipe } from '../panelSwipe';
 import '../commands';
 import { fakeSettingsApi } from './fakeSettings';
 import type { PluginDef } from '../plugins/api';
@@ -288,27 +286,6 @@ describe('plugins', () => {
     useStore.setState({ panel: order[0] });
     runCommand('view.panel.previous');
     expect(useStore.getState().panel).toBe(order[order.length - 1]);
-    useStore.setState({ railOrder: [], hiddenRailPanels: [], panel: undefined, lastPanel: undefined });
-  });
-
-  it('a swipe with the modifier held steps one tool, however long it goes, and the next swipe another', () => {
-    resetPanelSwipe();
-    useStore.setState({ railOrder: ['git', 'files'], hiddenRailPanels: [], panel: 'git', lastPanel: 'git' });
-    const mod = isMac ? { metaKey: true } : { altKey: true };
-    const wheel = (deltaY: number, o: WheelEventInit = mod) => new WheelEvent('wheel', { deltaY, cancelable: true, ...o });
-    // Without the modifier: a scroll, left alone.
-    const plain = wheel(200, {});
-    expect(onPanelWheel(plain, 0)).toBe(false);
-    expect(plain.defaultPrevented).toBe(false);
-    // One swipe down the list, with momentum: one step.
-    for (const [i, dy] of [10, 20, 30, 60, 40, 5].entries()) expect(onPanelWheel(wheel(dy), i * 16)).toBe(true);
-    expect(useStore.getState().panel).toBe('files');
-    // After a pause, a swipe up the list goes back.
-    for (const [i, dy] of [-30, -30].entries()) onPanelWheel(wheel(dy), 1000 + i * 16);
-    expect(useStore.getState().panel).toBe('git');
-    // A mostly horizontal swipe is no step.
-    const sideways = new WheelEvent('wheel', { deltaY: 50, deltaX: 80, cancelable: true, ...mod });
-    expect(onPanelWheel(sideways, 3000)).toBe(false);
     useStore.setState({ railOrder: [], hiddenRailPanels: [], panel: undefined, lastPanel: undefined });
   });
 

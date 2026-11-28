@@ -165,10 +165,24 @@ export function handleKey(ev: KeyboardEvent, ctx: KeyContext = keyContext()): bo
 }
 
 /** The commands whose keys the app takes before Monaco editors and pane
- * inputs see them (handleEditorKey): leaving the pane (Ctrl+B) and Go Back
- * and Go Forward (Cmd+[ and Cmd+] on macOS), which only navigate; editors
- * indent with Tab and Shift+Tab. */
-const EDITOR_COMMANDS: ReadonlySet<string> = new Set(['pane.leave', 'pane.back', 'pane.forward']);
+ * inputs see them (handleEditorKey): leaving the pane (Ctrl+B), Go Back and
+ * Go Forward (Cmd+[ and Cmd+] on macOS, since editors indent with Tab and
+ * Shift+Tab), and switching tabs by position (Cmd+1…9 on macOS, Alt+1…9 on
+ * Windows and Linux, which are not registered in the application menu). */
+const EDITOR_COMMANDS: ReadonlySet<string> = new Set([
+  'pane.leave',
+  'pane.back',
+  'pane.forward',
+  'tab.select1',
+  'tab.select2',
+  'tab.select3',
+  'tab.select4',
+  'tab.select5',
+  'tab.select6',
+  'tab.select7',
+  'tab.select8',
+  'tab.select9',
+]);
 
 /** Runs one of EDITOR_COMMANDS when `ev` matches a single-stroke binding for
  * it in the terminal context (used in capture phase inside Monaco editors

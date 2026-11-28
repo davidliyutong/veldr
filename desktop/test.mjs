@@ -15,6 +15,7 @@ const tests = [
   'folders',
   'follow',
   'frames',
+  'haptics',
   'keychain',
   'menu',
   'notifications',
